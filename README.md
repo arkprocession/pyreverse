@@ -1,12 +1,12 @@
 # PyReverse - Python Reverse Proxy Tool
 A Python-Based Reverse Proxy Tool for HTTP Applications Without Native HTTPS Support
 
-Pyreverse is a Python-based reverse proxy tool that allows HTTP applications without native HTTPS support to serve HTTPS traffic. This script listens for incoming HTTPS requests on the specified port and forwards them as HTTP requests to the target host and port. It also provides functionality to generate self-signed certificates using OpenSSL and serves the application on both local and public IPs. The configuration is stored in a config.ini file, which allows you to specify multiple hosts and ports to proxy simultaneously. The script utilizes multithreading to serve each proxy instance in a separate thread.
+Pyreverse is a Python-based reverse proxy tool that allows HTTP applications without native HTTPS support to serve HTTPS traffic. This script listens for incoming HTTPS requests on the specified port and forwards them as HTTP requests to the target host and port. It also provides functionality to generate self-signed certificates using Cryptography Library from Python and serves the application on both local and public IPs. The configuration is stored in a config.ini file, which allows you to specify multiple hosts and ports to proxy simultaneously. The script utilizes multithreading to serve each proxy instance in a separate thread.
 
 
 
 
-First, download the PyReverse files from their source and place them in the same directory: pyreverse.py, config.ini, and the openssl folder.
+First, download the PyReverse files from their source and place them in the same directory: pyreverse.py and the config.ini.
 
 Install the requirements.txt file by running pip install -r requirements.txt in the command prompt or terminal. This will install all the necessary Python packages required by PyReverse.
 
