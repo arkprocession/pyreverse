@@ -8,12 +8,18 @@ The script also generates SSL certificates and keys, and allows you to specify t
 
 List of commands:
 
+    ("Reverse Proxy Tool v1.0 by Ark")
+    ("\nCommands:")
     ("- list: Show all proxies.")
+    ("- reload: reload all proxies from the config.ini.")
     ("- start <ID>: Start a specific proxy.")
     ("- start all: Start all proxies.")
     ("- stop <ID>: Stop a specific proxy.")
     ("- stop all: Stop all proxies.")
+    ("- status <ID>: Show the status of a specific proxy.")
+    ("- status all: Show the status of all proxies.")
     ("- add <Host> <HttpPort> <HttpsPort>: Add a new proxy.")
     ("- edit <ID> <Host> <HttpPort> <HttpsPort>: Edit an existing proxy.")
     ("- delete <ID>: Delete a specific proxy.")
-    ("- exit: Stop all proxies and exit.")
+    ("- help: Displays available commands.") 
+    ("- exit: Stop all proxies and exit.")  
