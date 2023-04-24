@@ -18,6 +18,7 @@ from cryptography.x509.oid import NameOID
 from cryptography.hazmat.backends import default_backend
 import datetime
 import time
+import ipaddress
 
 class ReverseProxyHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
     def __init__(self, target_host, target_port, *args, **kwargs):
@@ -112,7 +113,6 @@ def get_local_ips():
     for ip in socket.getaddrinfo(hostname, None):
         local_ips.append(ip[4][0])
     return list(set(local_ips))
-
 
 def run_proxy(host, http_port, https_port, stop_event):
     if not check_port(host, http_port):
@@ -222,14 +222,18 @@ def proxy_cli(proxies):
     print("Reverse Proxy Tool v1.0 by Ark")
     print("\nCommands:")
     print("- list: Show all proxies.")
+    print("- reload: reload all proxies from the config.ini.")
     print("- start <ID>: Start a specific proxy.")
     print("- start all: Start all proxies.")
     print("- stop <ID>: Stop a specific proxy.")
     print("- stop all: Stop all proxies.")
+    print("- status <ID>: Show the status of a specific proxy.")
+    print("- status all: Show the status of all proxies.")
     print("- add <Host> <HttpPort> <HttpsPort>: Add a new proxy.")
     print("- edit <ID> <Host> <HttpPort> <HttpsPort>: Edit an existing proxy.")
     print("- delete <ID>: Delete a specific proxy.")
-    print("- exit: Stop all proxies and exit.")
+    print("- help: Displays available commands.") 
+    print("- exit: Stop all proxies and exit.")  
 
     while True:
         cmd = input("> ").lower().split()
@@ -261,6 +265,29 @@ def proxy_cli(proxies):
             else:
                 print("Usage: start <ID> or start all")
 
+
+        # Add a new "status" command
+        elif cmd[0] == "status":
+            if len(cmd) > 1:
+                if cmd[1] == "all":
+                    for i, proxy in enumerate(proxies, start=1):
+                        status = "online" if check_port(proxy.host, proxy.http_port) and proxy.running else "offline"
+                        print(f"Proxy ID: {i}, Status: {status}")
+                else:
+                    try:
+                        proxy_id = int(cmd[1])
+                        if 1 <= proxy_id <= len(proxies):
+                            proxy = proxies[proxy_id - 1]
+                            status = "online" if check_port(proxy.host, proxy.http_port) and proxy.running else "offline"
+                            print(f"Proxy ID: {proxy_id}, Status: {status}")
+                        else:
+                            print("Invalid proxy ID.")
+                    except ValueError:
+                        print("Invalid proxy ID.")
+            else:
+                print("Usage: status <ID> or status all")
+
+
         elif cmd[0] == "stop":
             if len(cmd) > 1:
                 if cmd[1] == "all":
@@ -281,12 +308,18 @@ def proxy_cli(proxies):
                 print("Usage: stop <ID> or stop all")
 
 
-
-
         elif cmd[0] == "add":
             if len(cmd) == 4:
                 host, http_port, https_port = cmd[1], int(cmd[2]), int(cmd[3])
-                if not proxy_exists(proxies, host, http_port, https_port):
+                if not valid_ip(host):
+                    print("Invalid IP address.")
+                elif not valid_port(http_port) or not valid_port(https_port):
+                    print("Invalid port number.")
+                elif http_port == https_port:
+                    print("HttpPort and HttpsPort cannot be the same.")
+                elif ports_in_use(proxies, http_port, https_port):
+                    print("One or both of the specified ports are already in use.")
+                elif not proxy_exists(proxies, host, http_port, https_port):
                     proxy = Proxy(host, http_port, https_port)
                     proxies.append(proxy)
                     update_config(proxies, config_path)
@@ -296,7 +329,6 @@ def proxy_cli(proxies):
             else:
                 print("Usage: add <Host> <HttpPort> <HttpsPort>")
 
-
         elif cmd[0] == "edit":
             if len(cmd) == 5:
                 try:
@@ -304,22 +336,31 @@ def proxy_cli(proxies):
                     if 1 <= proxy_id <= len(proxies):
                         if not proxies[proxy_id - 1].running:
                             host, http_port, https_port = cmd[2], int(cmd[3]), int(cmd[4])
-                            print(f"About to edit proxy {proxy_id} with the following details:")
-                            print(f"Host: {host}, HttpPort: {http_port}, HttpsPort: {https_port}")
-                            while True:
-                                confirm = input("Confirm edit? (yes/no): ").lower()
-                                if confirm == "yes":
-                                    proxies[proxy_id - 1].host = host
-                                    proxies[proxy_id - 1].http_port = http_port
-                                    proxies[proxy_id - 1].https_port = https_port
-                                    update_config(proxies, config_path)
-                                    print(f"Edited proxy {proxy_id}: Host: {host}, HttpPort: {http_port}, HttpsPort: {https_port}")
-                                    break
-                                elif confirm == "no":
-                                    print("Edit canceled.")
-                                    break
-                                else:
-                                    print("Invalid input. Please enter 'yes' or 'no'.")
+                            if not valid_ip(host):
+                                print("Invalid IP address.")
+                            elif not valid_port(http_port) or not valid_port(https_port):
+                                print("Invalid port number.")
+                            elif http_port == https_port:
+                                print("HttpPort and HttpsPort cannot be the same.")
+                            elif ports_in_use(proxies, http_port, https_port, exclude_proxy_id=proxy_id):
+                                print("One or both of the specified ports are already in use.")
+                            else:
+                                print(f"About to edit proxy {proxy_id} with the following details:")
+                                print(f"Host: {host}, HttpPort: {http_port}, HttpsPort: {https_port}")
+                                while True:
+                                    confirm = input("Confirm edit? (yes/no): ").lower()
+                                    if confirm == "yes":
+                                        proxies[proxy_id - 1].host = host
+                                        proxies[proxy_id - 1].http_port = http_port
+                                        proxies[proxy_id - 1].https_port = https_port
+                                        update_config(proxies, config_path)
+                                        print(f"Edited proxy {proxy_id}: Host: {host}, HttpPort: {http_port}, HttpsPort: {https_port}")
+                                        break
+                                    elif confirm == "no":
+                                        print("Edit canceled.")
+                                        break
+                                    else:
+                                        print("Invalid input. Please enter 'yes' or 'no'.")
                         else:
                             print("Cannot edit running threads.")
                     else:
@@ -328,7 +369,7 @@ def proxy_cli(proxies):
                     print("Invalid proxy ID.")
             else:
                 print("Usage: edit <ID> <Host> <HttpPort> <HttpsPort>")
-
+                
 
         elif cmd[0] == "delete":
             if len(cmd) == 2:
@@ -357,7 +398,30 @@ def proxy_cli(proxies):
                     print("Invalid proxy ID.")
             else:
                 print("Usage: delete <ID>")
-
+                
+                
+        elif cmd[0] == "reload":
+                proxies = reload_configuration(config_path)
+                print("Configuration reloaded.")
+                                
+                                
+        elif cmd[0] == "help":
+                print("Reverse Proxy Tool v1.0 by Ark")
+                print("\nCommands:")
+                print("- list: Show all proxies.")
+                print("- reload: reload all proxies from the config.ini.")
+                print("- start <ID>: Start a specific proxy.")
+                print("- start all: Start all proxies.")
+                print("- stop <ID>: Stop a specific proxy.")
+                print("- stop all: Stop all proxies.")
+                print("- status <ID>: Show the status of a specific proxy.")
+                print("- status all: Show the status of all proxies.")
+                print("- add <Host> <HttpPort> <HttpsPort>: Add a new proxy.")
+                print("- edit <ID> <Host> <HttpPort> <HttpsPort>: Edit an existing proxy.")
+                print("- delete <ID>: Delete a specific proxy.")
+                print("- help: Displays available commands.") 
+                print("- exit: Stop all proxies and exit.")                  
+                                                                        
 
         elif cmd[0] == "exit":
             while True:
@@ -375,7 +439,41 @@ def proxy_cli(proxies):
     for proxy in proxies:
         proxy.stop()
 
+
+def ports_in_use(proxies, http_port, https_port, exclude_proxy_id=None):
+    for idx, proxy in enumerate(proxies):
+        if exclude_proxy_id is not None and idx == exclude_proxy_id - 1:
+            continue
+        if proxy.http_port == http_port or proxy.https_port == https_port:
+            return True
+    return False
+    
+    
+def valid_port(port):
+    return 1 <= port <= 65535
+
+def valid_ip(host):
+    try:
+        ipaddress.ip_address(host)
+        return True
+    except ValueError:
+        return False
         
+def reload_configuration(config_path):
+    config = configparser.ConfigParser()
+    config.read(config_path)
+
+    proxies = []
+
+    for section in config.sections():
+        host = config[section]["Host"]
+        http_port = int(config[section]["HttpPort"])
+        https_port = int(config[section]["HttpsPort"])
+
+        proxy = Proxy(host, http_port, https_port)
+        proxies.append(proxy)
+
+    return proxies        
         
 def proxy_exists(proxies, host, http_port, https_port):
     for proxy in proxies:
