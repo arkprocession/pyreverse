@@ -4,4 +4,4 @@ The proxy server can handle HTTP and HTTPS requests, and supports various HTTP m
 
 The script includes a command-line interface that allows you to manage multiple proxy instances. You can add, edit, delete, and start/stop proxy servers with this interface.
 
-The script also generates SSL certificates and keys, and allows you to specify the ports for the HTTP and HTTPS connections. Additionally, it provides IP addresses for the server and clien
+The script also generates SSL certificates and keys, and allows you to specify the ports for the HTTP and HTTPS connections. Additionally, it provides IP addresses for the hosted instances.
