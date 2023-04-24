@@ -8,7 +8,6 @@ The script also generates SSL certificates and keys, and allows you to specify t
 
 List of commands:
 
-    ("\nCommands:")
     ("- list: Show all proxies.")
     ("- start <ID>: Start a specific proxy.")
     ("- start all: Start all proxies.")
