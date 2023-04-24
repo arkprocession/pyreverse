@@ -17,16 +17,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 from cryptography.hazmat.backends import default_backend
 import datetime
-
-
-def resource_path(relative_path):
-    try:
-        base_path = sys._MEIPASS
-    except Exception:
-        base_path = os.path.abspath(".")
-    return os.path.join(base_path, relative_path)
-
-
+import time
 
 class ReverseProxyHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
     def __init__(self, target_host, target_port, *args, **kwargs):
@@ -123,7 +114,7 @@ def get_local_ips():
     return list(set(local_ips))
 
 
-def run_proxy(host, http_port, https_port):
+def run_proxy(host, http_port, https_port, stop_event):
     if not check_port(host, http_port):
         print(f"No application running on {host}:{http_port}. Skipping proxy setup.")
         return
@@ -187,6 +178,7 @@ def run_proxy(host, http_port, https_port):
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     context.load_cert_chain(cert_file, key_file)
     httpd.socket = context.wrap_socket(httpd.socket, server_side=True)
+    httpd.timeout = 1  # Add this line to set a timeout for handle_request
 
     local_ips = get_local_ips()
     public_ip = get_public_ip()
@@ -198,9 +190,211 @@ def run_proxy(host, http_port, https_port):
     print(f"- Public IP: https://{public_ip}:{https_port}")
 
     try:
-        httpd.serve_forever()
+        while not stop_event.is_set():
+            httpd.handle_request()
     except KeyboardInterrupt:
         httpd.shutdown()
+
+class Proxy:
+    def __init__(self, host, http_port, https_port):
+        self.host = host
+        self.http_port = http_port
+        self.https_port = https_port
+        self.stop_event = threading.Event()
+        self.proxy_thread = None
+        self.running = False
+
+    def start(self):
+        if not self.running:
+            self.stop_event.clear()
+            self.proxy_thread = threading.Thread(target=run_proxy, args=(self.host, self.http_port, self.https_port, self.stop_event))
+            self.proxy_thread.start()
+            self.running = True
+
+    def stop(self):
+        if self.running:
+            self.stop_event.set()
+            self.proxy_thread.join()
+            self.running = False
+
+
+def proxy_cli(proxies):
+    print("Reverse Proxy Tool v1.0 by Ark")
+    print("\nCommands:")
+    print("- list: Show all proxies.")
+    print("- start <ID>: Start a specific proxy.")
+    print("- start all: Start all proxies.")
+    print("- stop <ID>: Stop a specific proxy.")
+    print("- stop all: Stop all proxies.")
+    print("- add <Host> <HttpPort> <HttpsPort>: Add a new proxy.")
+    print("- edit <ID> <Host> <HttpPort> <HttpsPort>: Edit an existing proxy.")
+    print("- delete <ID>: Delete a specific proxy.")
+    print("- exit: Stop all proxies and exit.")
+
+    while True:
+        cmd = input("> ").lower().split()
+
+        if len(cmd) == 0:
+            continue
+
+        if cmd[0] == "list":
+            for i, proxy in enumerate(proxies, start=1):
+                status = "online" if check_port(proxy.host, proxy.http_port) and proxy.running else "offline"
+                print(f"Proxy ID: {i}, Host: {proxy.host}, HttpPort: {proxy.http_port}, HttpsPort: {proxy.https_port}, Status: {status}")
+
+        elif cmd[0] == "start":
+            if len(cmd) > 1:
+                if cmd[1] == "all":
+                    for i, proxy in enumerate(proxies, start=1):
+                        proxy.start()
+                        print(f"Proxy {i} initializing.")
+                else:
+                    try:
+                        proxy_id = int(cmd[1])
+                        if 1 <= proxy_id <= len(proxies):
+                            proxies[proxy_id - 1].start()
+                            print(f"Proxy {proxy_id} initializing.")
+                        else:
+                            print("Invalid proxy ID.")
+                    except ValueError:
+                        print("Invalid proxy ID.")
+            else:
+                print("Usage: start <ID> or start all")
+
+        elif cmd[0] == "stop":
+            if len(cmd) > 1:
+                if cmd[1] == "all":
+                    for i, proxy in enumerate(proxies, start=1):
+                        proxy.stop()
+                        print(f"Proxy {i} offline.")
+                else:
+                    try:
+                        proxy_id = int(cmd[1])
+                        if 1 <= proxy_id <= len(proxies):
+                            proxies[proxy_id - 1].stop()
+                            print(f"Proxy {proxy_id} offline.")
+                        else:
+                            print("Invalid proxy ID.")
+                    except ValueError:
+                        print("Invalid proxy ID.")
+            else:
+                print("Usage: stop <ID> or stop all")
+
+
+
+
+        elif cmd[0] == "add":
+            if len(cmd) == 4:
+                host, http_port, https_port = cmd[1], int(cmd[2]), int(cmd[3])
+                if not proxy_exists(proxies, host, http_port, https_port):
+                    proxy = Proxy(host, http_port, https_port)
+                    proxies.append(proxy)
+                    update_config(proxies, config_path)
+                    print(f"Added proxy: Host: {host}, HttpPort: {http_port}, HttpsPort: {https_port}")
+                else:
+                    print("This proxy already exists.")
+            else:
+                print("Usage: add <Host> <HttpPort> <HttpsPort>")
+
+
+        elif cmd[0] == "edit":
+            if len(cmd) == 5:
+                try:
+                    proxy_id = int(cmd[1])
+                    if 1 <= proxy_id <= len(proxies):
+                        if not proxies[proxy_id - 1].running:
+                            host, http_port, https_port = cmd[2], int(cmd[3]), int(cmd[4])
+                            print(f"About to edit proxy {proxy_id} with the following details:")
+                            print(f"Host: {host}, HttpPort: {http_port}, HttpsPort: {https_port}")
+                            while True:
+                                confirm = input("Confirm edit? (yes/no): ").lower()
+                                if confirm == "yes":
+                                    proxies[proxy_id - 1].host = host
+                                    proxies[proxy_id - 1].http_port = http_port
+                                    proxies[proxy_id - 1].https_port = https_port
+                                    update_config(proxies, config_path)
+                                    print(f"Edited proxy {proxy_id}: Host: {host}, HttpPort: {http_port}, HttpsPort: {https_port}")
+                                    break
+                                elif confirm == "no":
+                                    print("Edit canceled.")
+                                    break
+                                else:
+                                    print("Invalid input. Please enter 'yes' or 'no'.")
+                        else:
+                            print("Cannot edit running threads.")
+                    else:
+                        print("Invalid proxy ID.")
+                except ValueError:
+                    print("Invalid proxy ID.")
+            else:
+                print("Usage: edit <ID> <Host> <HttpPort> <HttpsPort>")
+
+
+        elif cmd[0] == "delete":
+            if len(cmd) == 2:
+                try:
+                    proxy_id = int(cmd[1])
+                    if 1 <= proxy_id <= len(proxies):
+                        if not proxies[proxy_id - 1].running:
+                            while True:
+                                print(f"About to delete proxy {proxy_id}")
+                                confirm = input("Confirm delete? (yes/no): ").lower()
+                                if confirm == "yes":
+                                    del proxies[proxy_id - 1]
+                                    update_config(proxies, config_path)
+                                    print(f"Deleted proxy {proxy_id}")
+                                    break
+                                elif confirm == "no":
+                                    print("Delete canceled.")
+                                    break
+                                else:
+                                    print("Invalid input. Please enter 'yes' or 'no'.")
+                        else:
+                            print("Cannot delete running threads.")
+                    else:
+                        print("Invalid proxy ID.")
+                except ValueError:
+                    print("Invalid proxy ID.")
+            else:
+                print("Usage: delete <ID>")
+
+
+        elif cmd[0] == "exit":
+            while True:
+                confirm = input("Are you sure you want to exit? all thread will be interrupted (yes/no): ").lower()
+                if confirm == "yes":
+                    break
+                elif confirm == "no":
+                    print("Exit canceled.")
+                    break
+                else:
+                    print("Invalid input. Please enter 'yes' or 'no'.")
+
+                    
+    # Stop all proxies before exiting
+    for proxy in proxies:
+        proxy.stop()
+
+        
+        
+def proxy_exists(proxies, host, http_port, https_port):
+    for proxy in proxies:
+        if proxy.host == host and proxy.http_port == http_port and proxy.https_port == https_port:
+            return True
+    return False
+
+   
+def update_config(proxies, config_path):
+    config = configparser.ConfigParser()
+    for i, proxy in enumerate(proxies, start=1):
+        section = f"Proxy{i}"
+        config[section] = {}
+        config[section]["Host"] = proxy.host
+        config[section]["HttpPort"] = str(proxy.http_port)
+        config[section]["HttpsPort"] = str(proxy.https_port)
+
+    with open(config_path, "w") as config_file:
+        config.write(config_file)
 
 
 if __name__ == "__main__":
@@ -209,19 +403,21 @@ if __name__ == "__main__":
     config_path = os.path.join(script_dir, "config.ini")
     config.read(config_path)
 
-    proxy_threads = []
+    proxies = []
 
     for section in config.sections():
         host = config[section]["Host"]
         http_port = int(config[section]["HttpPort"])
         https_port = int(config[section]["HttpsPort"])
 
-        proxy_thread = threading.Thread(target=run_proxy, args=(host, http_port, https_port))
-        proxy_threads.append(proxy_thread)
-        proxy_thread.start()
+        proxy = Proxy(host, http_port, https_port)
+        proxies.append(proxy)
 
     try:
-        for proxy_thread in proxy_threads:
-            proxy_thread.join()
+        # Start a simple command-line interface to control proxies
+        proxy_cli(proxies)
     except KeyboardInterrupt:
         print("Shutting down proxies...")
+
+    for proxy in proxies:
+        proxy.stop()
