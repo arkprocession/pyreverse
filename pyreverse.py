@@ -219,6 +219,8 @@ class Proxy:
 
 
 def proxy_cli(proxies):
+    exit_requested = False
+    
     print("Reverse Proxy Tool v1.0 by Ark")
     print("\nCommands:")
     print("- list: Show all proxies.")
@@ -420,13 +422,18 @@ def proxy_cli(proxies):
                 print("- edit <ID> <Host> <HttpPort> <HttpsPort>: Edit an existing proxy.")
                 print("- delete <ID>: Delete a specific proxy.")
                 print("- help: Displays available commands.") 
-                print("- exit: Stop all proxies and exit.")                  
+                print("- exit: Stop all proxies and exit.")                 
                                                                         
 
         elif cmd[0] == "exit":
             while True:
-                confirm = input("Are you sure you want to exit? all thread will be interrupted (yes/no): ").lower()
+                confirm = input("Are you sure you want to exit? All threads will be interrupted (yes/no): ").lower()
                 if confirm == "yes":
+                    # Stop all proxies before exiting
+                    for proxy in proxies:
+                        proxy.stop()
+                    # Set exit_requested flag to True
+                    exit_requested = True
                     break
                 elif confirm == "no":
                     print("Exit canceled.")
@@ -434,10 +441,9 @@ def proxy_cli(proxies):
                 else:
                     print("Invalid input. Please enter 'yes' or 'no'.")
 
-                    
-    # Stop all proxies before exiting
-    for proxy in proxies:
-        proxy.stop()
+        # Add a condition to check the exit_requested flag
+        if exit_requested:
+            break
 
 
 def ports_in_use(proxies, http_port, https_port, exclude_proxy_id=None):
